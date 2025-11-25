@@ -1,0 +1,126 @@
+services:
+  jira-cluster-8134-db:
+    platform: ${JIRA_PLATFORM}
+    image: ${ORACLE}
+    container_name: jira-cluster-8134-db
+    ports:
+      - "1521:1521"
+    environment:
+      - ORACLE_SID=JIRADC
+      - ORACLE_CHARACTERSET=AL32UTF8
+      - NLS_SORT=BINARY
+      - DEFAULT_CACHE_SIZE=604M
+    volumes:
+      - /Users/dagrato/jira-dc/oradata:/opt/oracle/oradata # persistent oracle database data.
+      - /Users/dagrato/jira-dc/data-bridge:/data-bridge # just to have someplace to put data into the running container if needed
+    networks:
+      jira-software-cluster-network-8134:
+        aliases:
+          - jira-cluster-8134-db
+  jira-cluster-lb:
+    platform: ${JIRA_PLATFORM}
+    image: codeclou/docker-atlassian-jira-data-center:loadbalancer-9837a52
+    container_name: jira-cluster-lb
+    links:
+      - jira-cluster-node1
+    ports:
+      - "18134:18134"
+    environment:
+      - LB_PORT=18134
+      - NODES=2
+      - NODES_NAME_SCHEMA=jira-cluster-node___NUM___
+    volumes:
+      - /Users/dagrato/jira-dc/jira-cluster/:/opt/
+    networks:
+      jira-cluster-network:
+        aliases:
+          - jira-cluster-lb
+  jira-cluster-node1:
+    platform: ${JIRA_PLATFORM}
+    image: ${JIRA_IMAGE}
+    container_name: jira-cluster-node1
+    links:
+      - jira-cluster-db
+    environment:
+      # Memory / Heap Size
+      - JVM_MAXIMUM_MEMORY=4096M
+      - JVM_MAXIMUM_MEMORY=8192M
+      # Reverse Proxy Settings
+      - ATL_PROXY_NAME=jira-cluster-8134-lb
+      - ATL_PROXY_PORT=18134
+      # Database
+      - ATL_JDBC_URL=jdbc:oracle:thin:@//jira-cluster-db:1521/ORCLPDB1
+      - ATL_JDBC_USER=jiradbuser
+      - ATL_JDBC_PASSWORD=Test1234
+      - ATL_DB_DRIVER=oracle.jdbc.OracleDriver
+      - ATL_DB_TYPE=oracle10g
+      # Data Center configuration
+      - CLUSTERED=true
+      - JIRA_NODE_ID=jira-cluster-8134-node1
+      - EHCACHE_LISTENER_HOSTNAME=jira-cluster-8134-node1
+      - EHCACHE_LISTENER_PORT=40001
+      - EHCACHE_OBJECT_PORT=40011
+      - EHCACHE_PEER_DISCOVERY=default
+      # Home Directories
+      - JIRA_HOME=/opt/jira-home
+      - JIRA_SHARED_HOME=/opt/jira-home-shared
+    volumes:
+      - type: bind
+        source: /Users/dagrato/jira-dc/jira-cluster/jira-home-node1
+        target: /opt/jira-home
+      - type: bind
+        source: /Users/dagrato/jira-dc/jira-cluster/jira-home-shared
+        target: /opt/jira-home-shared
+    depends_on:
+      - jira-cluster-db
+    networks:
+      jira-cluster-network:
+        aliases:
+          - jira-cluster-node1
+  jira-cluster-node2:
+    platform: ${JIRA_PLATFORM}
+    image: ${JIRA_IMAGE}
+    container_name: jira-cluster-node2
+    links:
+      - jira-cluster-db
+    environment:
+      # Memory / Heap Size
+      - JVM_MINIMUM_MEMORY=512M
+      - JVM_MAXIMUM_MEMORY=2048M
+      # Reverse Proxy Settings
+      - ATL_PROXY_NAME=jira-cluster-lb
+      - ATL_PROXY_PORT=18134
+      # Database
+      - ATL_JDBC_URL=jdbc:mysql://jira-cluster-db:3306/jira
+      - ATL_JDBC_USER=root
+      - ATL_JDBC_PASSWORD=jira
+      - ATL_DB_DRIVER=com.mysql.cj.jdbc.Driver
+      - ATL_DB_TYPE=mysql8
+      # Data Center configuration
+      - CLUSTERED=true
+      - JIRA_NODE_ID=jira-cluster-node1
+      - EHCACHE_LISTENER_HOSTNAME=jira-cluster-node1
+      - EHCACHE_LISTENER_PORT=40001
+      - EHCACHE_OBJECT_PORT=40011
+      - EHCACHE_PEER_DISCOVERY=default
+      # Home Directories
+      - JIRA_HOME=/opt/jira-home
+      - JIRA_SHARED_HOME=/opt/jira-home-shared
+    volumes:
+      - type: bind
+        source: /Users/dagrato/jira-dc/jira-cluster/jira-home-node1
+        target: /opt/jira-home
+      - type: bind
+        source: /Users/dagrato/jira-dc/jira-cluster/jira-home-shared
+        target: /opt/jira-home-shared
+    depends_on:
+      - jira-cluster-db
+    networks:
+      jira-cluster-network:
+        aliases:
+          - jira-cluster-node2
+volumes:
+  jira-cluster:
+networks:
+  jira-cluster-network:
+    driver: bridge
